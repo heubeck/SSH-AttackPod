@@ -1,0 +1,25 @@
+name: Build ARM64 container image
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+        - name: Checkout Code
+          uses: actions/checkout@v4
+
+        - name: Set up QEMU
+          uses: docker/setup-qemu-action@v3
+
+        - name: Set up Docker Buildx
+          uses: docker/setup-buildx-action@v3
+          with:
+            platforms: linux/arm64
+
+        - name: Docker build
+          uses: docker/build-push-action@v6
+          with:
+              context: src
+              file: src/Dockerfile
+              platforms: linux/arm64
+              load: true
+              push: false
