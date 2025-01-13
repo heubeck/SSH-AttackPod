@@ -1,0 +1,71 @@
+name: Multi arch container image build
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag_version:
+        required: true
+        description: The semver image tag for the resulting container images
+  release:
+    types: [released]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+        matrix:
+            include:
+                - arch: amd64
+                - arch: arm64
+    steps:
+        - name: Checkout Code
+          uses: actions/checkout@v4
+
+        - name: Set up QEMU
+          uses: docker/setup-qemu-action@v3
+
+        - name: Set up Docker Buildx
+          uses: docker/setup-buildx-action@v3
+          with:
+            platforms: linux/${{ matrix.arch }}
+
+        - name: Build image repo name
+          run: |
+            version=""
+            if [ -n "${{ github.event.inputs.image_tag_version }}" ]; then
+                # use input string as version
+                version="${{ github.event.inputs.image_tag_version }}"
+            else
+                # use git tag as version
+                release_tag="$GITHUB_REF"
+                version="${release_tag##*/}"
+                exit 1
+            fi
+
+            repo="${{ github.repository }}"
+            echo VERSIONED_IMAGE_FQN="ghcr.io/${repo,,}:$version-${{ matrix.arch }}" >> $GITHUB_ENV
+            echo LATEST_IMAGE_FQN="ghcr.io/${repo,,}:latest-${{ matrix.arch }}" >> $GITHUB_ENV
+
+        - name: Docker build
+          uses: docker/build-push-action@v6
+          with:
+              context: src
+              file: src/Dockerfile
+              platforms: linux/${{ matrix.arch }}
+              tags: |
+                ${{ env.VERSIONED_IMAGE_FQN }}
+                ${{ env.LATEST_IMAGE_FQN }}
+              load: true
+              push: false
+
+        - name: Login to GHCR
+          uses: docker/login-action@v3
+          with:
+            registry: ghcr.io
+            username: ${{ github.actor }}
+            password: ${{ secrets.GITHUB_TOKEN }}
+
+        - name: Docker push to GHCR
+          run: |
+            # upload images
+            docker push "$VERSIONED_IMAGE_FQN"
+            docker push "$LATEST_IMAGE_FQN"
